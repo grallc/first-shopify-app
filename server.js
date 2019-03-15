@@ -7,6 +7,8 @@ const session = require("koa-session");
 require("isomorphic-fetch");
 dotenv.config();
 const { default: graphQLProxy } = require("@shopify/koa-shopify-graphql-proxy");
+const Router = require('koa-router');
+const processPayment = require('./server/router');
 
 const port = parseInt(process.env.PORT, 10) || 3000;
 const dev = process.env.NODE_ENV !== "production";
@@ -17,8 +19,12 @@ const { SHOPIFY_API_SECRET_KEY, SHOPIFY_API_KEY, TUNNEL_URL } = process.env;
 
 app.prepare().then(() => {
   const server = new Koa();
+  const router = new Router();
   server.use(session(server));
   server.keys = [SHOPIFY_API_SECRET_KEY];
+
+  router.get('/', processPayment);
+
 
   server.use(
     createShopifyAuth({
