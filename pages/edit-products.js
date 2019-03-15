@@ -1,4 +1,5 @@
 import {
+    Banner,
     Card,
     DisplayText,
     Form,
@@ -6,15 +7,36 @@ import {
     Layout,
     Page,
     PageActions,
-    TextField
-  } from '@shopify/polaris';
-  import store from 'store-js';
+    TextField,
+    Toast
+  } from "@shopify/polaris";
+  import gql from "graphql-tag";
+  import { Mutation } from "react-apollo";
+  import store from "store-js";
   
+  const UPDATE_PRICE = gql`
+    mutation productVariantUpdate($input: ProductVariantInput!) {
+      productVariantUpdate(input: $input) {
+        userErrors {
+          field
+          message
+        }
+        product {
+          title
+        }
+        productVariant {
+          id
+          price
+        }
+      }
+    }
+  `;
   class EditProduct extends React.Component {
     state = {
-      discount: '',
-      price: '',
-      variantId: ''
+      discount: "",
+      price: "",
+      variantId: "",
+      showToast: false
     };
   
     componentDidMount() {
@@ -25,54 +47,77 @@ import {
       const { name, price, discount, variantId } = this.state;
   
       return (
-        <Page>
-          <Layout>
-            <Layout.Section>
-              <DisplayText size="large">{name}</DisplayText>
-              <Form>
-                <Card sectioned>
-                  <FormLayout>
-                    <FormLayout.Group>
-                      <TextField
-                        prefix="$"
-                        value={price}
-                        disabled={true}
-                        label="Original price"
-                        type="price"
+        <Mutation mutation={UPDATE_PRICE}>
+          {(handleSubmit, { error, data }) => {
+            const showError = error && (
+              <Banner status="critical">{error.message}</Banner>
+            );
+            const showToast = data && data.productVariantUpdate && (
+              <Toast
+                content="Sucessfully updated"
+                onDismiss={() => this.setState({ showToast: false })}
+              />
+            );
+            return (
+              <Page>
+                <Layout>
+                  {showToast}
+                  <Layout.Section>{showError}</Layout.Section>
+                  <Layout.Section>
+                    <DisplayText size="large">{name}</DisplayText>
+                    <Form>
+                      <Card sectioned>
+                        <FormLayout>
+                          <FormLayout.Group>
+                            <TextField
+                              prefix="$"
+                              value={price}
+                              disabled={true}
+                              label="Original price"
+                              type="price"
+                            />
+                            <TextField
+                              prefix="$"
+                              value={discount}
+                              onChange={this.handleChange("discount")}
+                              label="Discounted price"
+                              type="discount"
+                            />
+                          </FormLayout.Group>
+                          <p>
+                            This sale price will expire in two weeks on{" "}
+                            {this.props.expires}
+                          </p>
+                        </FormLayout>
+                      </Card>
+                      <PageActions
+                        primaryAction={[
+                          {
+                            content: "Save",
+                            onAction: () => {
+                              const productVariableInput = {
+                                id: variantId,
+                                price: discount
+                              };
+                              handleSubmit({
+                                variables: { input: productVariableInput }
+                              });
+                            }
+                          }
+                        ]}
+                        secondaryActions={[
+                          {
+                            content: "Remove discount"
+                          }
+                        ]}
                       />
-                      <TextField
-                        prefix="$"
-                        value={discount}
-                        onChange={this.handleChange('discount')}
-                        label="Discounted price"
-                        type="discount"
-                      />
-                    </FormLayout.Group>
-                    <p>
-                      This sale price will expire in two weeks on{' '}
-                      {this.props.expires}
-                    </p>
-                  </FormLayout>
-                </Card>
-                <PageActions
-                  primaryAction={[
-                    {
-                      content: 'Save',
-                      onAction: () => {
-                        console.log('submitted');
-                      }
-                    }
-                  ]}
-                  secondaryActions={[
-                    {
-                      content: 'Remove discount'
-                    }
-                  ]}
-                />
-              </Form>
-            </Layout.Section>
-          </Layout>
-        </Page>
+                    </Form>
+                  </Layout.Section>
+                </Layout>
+              </Page>
+            );
+          }}
+        </Mutation>
       );
     }
   
@@ -81,13 +126,15 @@ import {
     };
   
     itemToBeConsumed = () => {
-      const item = store.get('item');
+      const item = store.get("item");
       const price = item.variants.edges[0].node.price;
       const variantId = item.variants.edges[0].node.id;
       const discounter = price * 0.1;
       this.setState({ price: price, variantId: variantId });
+  
       return (price - discounter).toFixed(2);
     };
   }
   
   export default EditProduct;
+  
