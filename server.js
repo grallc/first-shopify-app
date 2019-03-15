@@ -7,8 +7,12 @@ const session = require("koa-session");
 require("isomorphic-fetch");
 dotenv.config();
 const { default: graphQLProxy } = require("@shopify/koa-shopify-graphql-proxy");
-const Router = require('koa-router');
-const processPayment = require('./server/router');
+const Router = require("koa-router");
+const {
+  receiveWebhook,
+  registerWebhook
+} = require("@shopify/koa-shopify-webhooks");
+const processPayment = require("./server/router");
 
 const port = parseInt(process.env.PORT, 10) || 3000;
 const dev = process.env.NODE_ENV !== "production";
@@ -23,8 +27,7 @@ app.prepare().then(() => {
   server.use(session(server));
   server.keys = [SHOPIFY_API_SECRET_KEY];
 
-  router.get('/', processPayment);
-
+  router.get("/", processPayment);
 
   server.use(
     createShopifyAuth({
@@ -43,6 +46,19 @@ app.prepare().then(() => {
             test: true
           }
         });
+
+        const registration = await registerWebhook({
+          address: `${TUNNEL_URL}/webhooks/products/create`,
+          topic: "PRODUCTS_CREATE",
+          accessToken,
+          shop
+        });
+
+        if (registration.success) {
+          console.log("Successfully registered webhook!");
+        } else {
+          console.log("Failed to register webhook", registration.result);
+        }
         const options = {
           method: "POST",
           body: stringifiedBillingParams,
@@ -66,15 +82,24 @@ app.prepare().then(() => {
     })
   );
 
+  const webhook = receiveWebhook({ secret: SHOPIFY_API_SECRET_KEY });
+
+  router.post("/webhooks/products/create", webhook, ctx => {
+    console.log("received webhook: ", ctx.state.webhook);
+  });
+
   server.use(graphQLProxy());
+
   server.use(router.routes());
   server.use(verifyRequest());
-  server.use(async ctx => {
+  router.get("*", verifyRequest(), async ctx => {
     await handle(ctx.req, ctx.res);
     ctx.respond = false;
     ctx.res.statusCode = 200;
     return;
   });
+  server.use(router.allowedMethods());
+  server.use(router.routes());
 
   server.listen(port, () => {
     console.log(`> Ready on http://localhost:${port}`);
